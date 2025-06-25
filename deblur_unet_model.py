@@ -229,3 +229,7 @@ class LowLightDeblurNet(nn.Module):
 if __name__ == "__main__":
     model = LowLightDeblurNet()
     print(model)
+    total_params     = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"总参数量: {total_params:,}")
+    print(f"可训练参数量: {trainable_params:,}")

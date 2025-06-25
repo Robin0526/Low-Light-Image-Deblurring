@@ -420,9 +420,9 @@ def plot_training_history(history, save_path):
 # ----------------------------
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="低光饱和去模糊专用模型训练")
-    parser.add_argument('--data_dir', default='dataset', help='包含 low_blur_noise 和 high_sharp_scaled 的根目录')
+    parser.add_argument('--data_dir', default='dataset/train', help='包含 low_blur_noise 和 high_sharp_scaled 的根目录')
     parser.add_argument('--ckpt_dir', default='checkpoint', help='模型 checkpoint 保存目录')
-    parser.add_argument('--result_dir', default='results', help='结果和可视化保存目录')
+    parser.add_argument('--result_dir', default='result', help='结果和可视化保存目录')
     parser.add_argument('--img_size', type=int, default=256, help='统一图像大小')
     parser.add_argument('--batch_size', type=int, default=8, help='训练 batch 大小')
     parser.add_argument('--epochs', type=int, default=100, help='训练轮数')

@@ -17,6 +17,9 @@ from piq import ssim, psnr  # 安装: pip install piq
 import time
 from tqdm import tqdm
 from deblur_unet_model import LowLightDeblurNet
+import lpips
+
+
 
 # ----------------------------
 # 自定义 Dataset 类 (与训练代码相同)
@@ -136,7 +139,13 @@ def process_image(model, device, image_path, img_size=256, save_comparison=True,
 # ----------------------------
 def evaluate_on_dataset(model, device, data_dir, img_size=256, output_dir='evaluation_results', 
                         max_samples=None, save_samples=True):
+
+
+
     """在整个数据集上评估模型性能"""
+
+    lpips_fn = lpips.LPIPS(net='vgg').to(device)
+                            
     # 创建输出目录
     os.makedirs(output_dir, exist_ok=True)
     
@@ -153,8 +162,8 @@ def evaluate_on_dataset(model, device, data_dir, img_size=256, output_dir='evalu
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=4)
     
     # 初始化指标
-    total_psnr = 0.0
-    total_ssim = 0.0
+                        
+    total_psnr = total_ssim = total_lpips = 0.0
     metrics = []
     processing_times = []
     
@@ -181,12 +190,17 @@ def evaluate_on_dataset(model, device, data_dir, img_size=256, output_dir='evalu
             
             total_psnr += batch_psnr
             total_ssim += batch_ssim
-            
+            # LPIPS（先映射到 [-1,1]）
+            out_n = outputs * 2 - 1
+            tgt_n = targets * 2 - 1
+            b_lpips = lpips_fn(out_n, tgt_n).item()
+            total_lpips += b_lpips
             # 记录每张图像的指标
             metrics.append({
                 'filename': filename[0],
                 'psnr': batch_psnr,
-                'ssim': batch_ssim
+                'ssim': batch_ssim,
+                'lpips': b_lpips
             })
             
             # 保存样本结果
@@ -224,14 +238,18 @@ def evaluate_on_dataset(model, device, data_dir, img_size=256, output_dir='evalu
     num_samples = len(metrics) if not max_samples else min(max_samples, len(dataset))
     avg_psnr = total_psnr / num_samples
     avg_ssim = total_ssim / num_samples
+    avg_lpips = total_lpips / num_samples
     avg_time = sum(processing_times) / len(processing_times)
     fps = 1.0 / avg_time
+    
+
     
     # 打印结果
     print("\n" + "="*50)
     print(f"评估完成，共处理 {num_samples} 张图像")
     print(f"平均 PSNR: {avg_psnr:.4f} dB")
     print(f"平均 SSIM: {avg_ssim:.4f}")
+    print(f"平均 LPIPS: {avg_lpips:.4f}")
     print(f"平均处理时间: {avg_time:.4f} 秒/张")
     print(f"处理速度: {fps:.2f} FPS")
     print("="*50)
@@ -239,9 +257,9 @@ def evaluate_on_dataset(model, device, data_dir, img_size=256, output_dir='evalu
     # 保存指标结果
     metrics_path = os.path.join(output_dir, "evaluation_metrics.csv")
     with open(metrics_path, 'w') as f:
-        f.write("filename,psnr,ssim\n")
+        f.write("filename,psnr,ssim,lpips\n")
         for m in metrics:
-            f.write(f"{m['filename']},{m['psnr']},{m['ssim']}\n")
+            f.write(f"{m['filename']},{m['psnr']},{m['ssim']},{m['lpips']}\n")
     print(f"已保存详细指标到: {metrics_path}")
     
     # 绘制指标分布图
@@ -324,6 +342,7 @@ def main():
     model = model.to(args.device)
     print("模型加载成功")
     
+    # lpips_fn = lpips.LPIPS(net='alex').to(args.device)
     # 确定运行模式
     if args.evaluate:
         # 评估模式 - 在整个数据集上评估模型性能
