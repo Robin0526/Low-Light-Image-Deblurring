@@ -52,6 +52,7 @@
 
   ## 目录结构
 
+  ```
   LowLightDeblur/
   ├── weights/                    # 模型权重
   │   ├── deblurnet_best.pth      # 原始模型
@@ -75,15 +76,18 @@
   └── requirements.txt            # 依赖
   ```
   
+  
+  ```
+  
   ## 环境配置
   
   ```bash
   pip install -r requirements.txt
   # 核心依赖: torch, torchvision, numpy, pillow, matplotlib, tqdm, lpips, piq
   ```
-
+  
   ## 训练指南
-
+  
   ### 原始模型训练
   ```bash
   python train_deblur_unet.py \
@@ -91,7 +95,7 @@
     --ckpt_dir checkpoint \
     --result_dir result
   ```
-
+  
   ### 新模型训练
   ```bash
   python train_new_unet.py \
@@ -101,9 +105,9 @@
     --result_dir result \
     --test_interval 10  # 每10轮测试一次
   ```
-
+  
   ## 测试与评估
-
+  
   ### 单图或批量推理
   ```bash
   # 原始模型单图推理
@@ -124,9 +128,9 @@
   ```
 
   ### 数据集评估
-
+  
   - 更改--data_dir参数切换评估的数据集
-
+  
   ```bash
   # 原始模型测试集评估
   python test.py \
@@ -146,28 +150,28 @@
     --output_dir result/evaluation/enhanced \
     --save_samples
   ```
-
+  
   ## 结果可视化
-
+  
   ### 训练过程
   | 原始模型                                                 | 新模型                                            |
   | -------------------------------------------------------- | ------------------------------------------------- |
   | ![原始模型训练曲线](./fig/training_history_original.png) | ![新模型训练曲线](./fig/training_history_new.png) |
-
+  
   ### 测试结果
   | 原始模型                                           | 新模型                                               |
   | -------------------------------------------------- | ---------------------------------------------------- |
   | ![原始模型测试结果](./fig/test_set_evaluation.png) | ![新模型测试结果](./fig/test_set_evaluation_new.png) |
-
+  
   ### 指标分布
   | PSNR分布                         | SSIM分布                         |
   | -------------------------------- | -------------------------------- |
   | ![PSNR分布](./fig/psnr_dist.png) | ![SSIM分布](./fig/ssim_dist.png) |
 
   
-
+  
   ## 性能对比
-
+  
   | 指标          | 原始模型 | 新模型 |
   | ------------- | -------- | ------ |
   | PSNR (dB)     | 26.40    | 27.15  |
