@@ -4,7 +4,7 @@
 
   ## 项目概述
 
-  本项目包含两个先进的低光图像去模糊模型，专为处理低光饱和环境下的图像模糊问题而设计：
+  本项目包含两个面向LOLBlur数据集的低光图像去模糊模型，专为处理低光饱和环境下的图像模糊问题而设计：
 
   ### 原始模型 (Original Model)
   - **核心架构**：
@@ -61,7 +61,11 @@
   ├── fig/                        # 可视化结果
   ├── dataset/                    # 数据集
   │   ├── train/                  # 训练集 (10,200张)
+  │   	├── high_sharp_scaled/  # 目标图片 
+  │   	└── low_blur_noise/     # 输入图片 
   │   └── test/                   # 测试集 (1,800张)
+  │   	├── high_sharp_scaled/  # 目标图片 
+  │   	└── low_blur_noise/     # 输入图片 
   ├── result/                     # 结果目录
   │   ├── training_history_original.png    # 原始模型训练曲线
   │   ├── training_history_new.png         # 新模型训练曲线
@@ -109,15 +113,21 @@
   ## 测试与评估
   
   ### 单图或批量推理
+  
+  - 选择原始模型： --model_type = original，     --model_path = deblurnet_best.pth
+  - 选择新模型：     --model_type = enhanced，--model_path = deblurnet_fac_best.pth
+  
   ```bash
-  # 原始模型单图推理
+  # 单图推理，使用原始模型
   python test.py \
     --model_type original \
     --model_path weights/deblurnet_best.pth \
-    --input_path test_image.jpg \
-    --output_dir result/test_results/original
+    --input_path test_images/0010.png \
+    --output_dir result/test_results/original \
+    --img_size 256 \
+    --save_comparison
     
-  # 新模型批量推理
+  # 批量推理，使用新模型
   python test.py \
     --model_type enhanced \
     --model_path weights/deblurnet_fac_best.pth \
@@ -126,29 +136,18 @@
     --img_size 256 \
     --save_comparison
   ```
-
+  
   ### 数据集评估
   
-  - 更改--data_dir参数切换评估的数据集
+  - 选择原始模型： --model_type = original，    --model_path = deblurnet_best.pth
+  - 选择新模型：     --model_type = enhanced，--model_path = deblurnet_fac_best.pth
   
   ```bash
-  # 原始模型测试集评估
-  python test.py \
-    --model_type original \
-    --model_path weights/deblurnet_best.pth \
-    --evaluate \
-    --data_dir dataset/test \   #或 dataset/train
-    --output_dir result/evaluation/original \
-    --save_samples
+  # 测试集评估，原始模型
+  python test.py   --model_type original      --model_path weights/deblurnet_best.pth   --evaluate  --data_dir dataset/test  --output_dir result/evaluation/original --save_samples
   
-  # 新模型测试集评估
-  python test.py \
-    --model_type enhanced \
-    --model_path weights/deblurnet_fac_best.pth \
-    --evaluate \
-    --data_dir dataset/test \  #或 dataset/train
-    --output_dir result/evaluation/enhanced \
-    --save_samples
+  # 测试集评估，新模型
+  python test.py   --model_type enhanced   --model_path weights/deblurnet_fac_best.pth  --evaluate  --data_dir dataset/test  --output_dir result/evaluation/enhanced --save_samples
   ```
   
   ## 结果可视化
@@ -167,7 +166,7 @@
   | PSNR分布                         | SSIM分布                         |
   | -------------------------------- | -------------------------------- |
   | ![PSNR分布](./fig/psnr_dist.png) | ![SSIM分布](./fig/ssim_dist.png) |
-
+  
   
   
   ## 性能对比
