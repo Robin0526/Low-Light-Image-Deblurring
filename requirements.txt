@@ -1,0 +1,7 @@
+torch>=1.8.0
+torchvision
+numpy
+pillow
+matplotlib
+tqdm
+rawpy    
