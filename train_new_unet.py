@@ -1,4 +1,4 @@
-# train.py
+# train_new_unet.py
 # 增强版训练脚本：针对低光饱和去模糊任务的专用模型架构
 
 import os
@@ -16,8 +16,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from piq import ssim, psnr  # 安装: pip install piq
 import matplotlib as mpl
-from deblur_unet_model import LowLightDeblurNet
-
+from new_unet_model import LowLightDeblurNet  # 导入改进的模型
 
 # ----------------------------
 # 自定义 Dataset 类
@@ -40,12 +39,12 @@ class LowLightDeblurDataset(Dataset):
         print(f"[Dataset] Found {len(self.target_paths)} target images under 'high_sharp_scaled' recursively.")
 
         if not self.input_paths or not self.target_paths:
-            raise RuntimeError(f"数据目录中没有图像文件，请检查路径是否正确。")
+            raise RuntimeError(f"No image files found in the data directory. Please check the path.")
         if len(self.input_paths) != len(self.target_paths):
-            raise RuntimeError(f"输入图像数量与目标图像数量不一致：{len(self.input_paths)} vs {len(self.target_paths)}")
+            raise RuntimeError(f"Input and target image counts do not match: {len(self.input_paths)} vs {len(self.target_paths)}")
 
         self.transform = transform
-        self.first_sample = None  # 保存第一个样本用于可视化
+        self.first_sample = None  # Save the first sample for visualization
 
     def __len__(self):
         return len(self.input_paths)
@@ -54,7 +53,7 @@ class LowLightDeblurDataset(Dataset):
         in_path = self.input_paths[idx]
         tgt_path = self.target_paths[idx]
         
-        # 保存第一个样本用于后续可视化
+        # Save the first sample for later visualization
         if idx == 0 and self.first_sample is None:
             print(f"[Dataset] First sample: input='{in_path}', target='{tgt_path}'")
             self.first_sample = (in_path, tgt_path)
@@ -73,19 +72,19 @@ class LowLightDeblurDataset(Dataset):
 # ----------------------------
 class HybridLoss(nn.Module):
     """
-    混合损失函数，结合多种损失类型：
-    1. L1 像素损失（弱光增强与亮度校正）: 60%
-    2. Perceptual Loss（VGG 特征域）: 30%
-    3. SSIM 损失: 10%
+    Hybrid loss function combining multiple loss types:
+    1. L1 pixel loss (for low-light enhancement and brightness correction): 60%
+    2. Perceptual Loss (VGG feature domain): 30%
+    3. SSIM loss: 10%
     """
     def __init__(self, alpha=0.6, beta=0.3, gamma=0.1, device='cuda'):
         super().__init__()
         self.l1_loss = nn.L1Loss()
-        self.alpha = alpha  # L1损失权重
-        self.beta = beta    # 感知损失权重
-        self.gamma = gamma  # SSIM损失权重
+        self.alpha = alpha  # L1 loss weight
+        self.beta = beta    # perceptual loss weight
+        self.gamma = gamma  # SSIM loss weight
         
-        # 使用预训练的VGG16网络提取特征用于感知损失
+        # Pre-trained VGG16 for perceptual loss
         self.vgg = None
         if beta > 0:
             self.vgg = self._build_vgg(device)
@@ -93,30 +92,30 @@ class HybridLoss(nn.Module):
                 param.requires_grad = False
     
     def _build_vgg(self, device):
-        """构建VGG16特征提取器"""
+        """Build VGG16 feature extractor"""
         vgg = torch.hub.load('pytorch/vision:v0.10.0', 'vgg16', pretrained=True)
-        vgg = vgg.features[:16]  # 取前16层
+        vgg = vgg.features[:16]  # Take the first 16 layers
         vgg = vgg.to(device).eval()
         return vgg
     
     def perceptual_loss(self, pred, target):
-        """计算感知损失"""
+        """Compute perceptual loss"""
         if self.vgg is None:
             return 0
         
-        # 归一化到VGG的输入范围
+        # Normalize to VGG input range
         mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1).to(pred.device)
         std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1).to(pred.device)
         pred_norm = (pred - mean) / std
         target_norm = (target - mean) / std
         
-        # 提取特征并计算L1损失
+        # Extract features and compute L1 loss
         pred_features = self.vgg(pred_norm)
         target_features = self.vgg(target_norm)
         return F.l1_loss(pred_features, target_features)
     
     def ssim_loss(self, pred, target):
-        """计算SSIM损失 (1 - SSIM)"""
+        """Compute SSIM loss (1 - SSIM)"""
         ssim_value = ssim(pred, target, data_range=1.0)
         return 1.0 - ssim_value
     
@@ -138,32 +137,32 @@ class HybridLoss(nn.Module):
 # ----------------------------
 def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"[Train] 使用设备: {device}")
+    print(f"[Train] Using device: {device}")
     
-    # 创建输出目录
+    # Create output directories
     os.makedirs(args.ckpt_dir, exist_ok=True)
     os.makedirs(args.result_dir, exist_ok=True)
     
-    # 图像变换
+    # Image transformations
     transform = transforms.Compose([
         transforms.Resize((args.img_size, args.img_size)),
         transforms.ToTensor()
     ])
     
-    # 创建数据集
+    # Create dataset
     full_dataset = LowLightDeblurDataset(args.data_dir, transform)
     
-    # 划分训练集和验证集 (验证集比例0.05)
+    # Split into train and validation sets (validation ratio 0.05)
     val_size = int(len(full_dataset) * 0.05)
     train_size = len(full_dataset) - val_size
     train_dataset, val_dataset = random_split(
         full_dataset, [train_size, val_size], 
-        generator=torch.Generator().manual_seed(42)  # 固定随机种子
+        generator=torch.Generator().manual_seed(42)  # Fixed random seed
     )
     
-    print(f"[Train] 训练集大小: {len(train_dataset)}, 验证集大小: {len(val_dataset)}")
+    print(f"[Train] Train size: {len(train_dataset)}, Validation size: {len(val_dataset)}")
     
-    # 创建数据加载器
+    # Create data loaders
     train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=4, pin_memory=device.type == 'cuda'
@@ -173,10 +172,10 @@ def train(args):
         num_workers=2, pin_memory=device.type == 'cuda'
     )
     
-    # 初始化模型
+    # Initialize model (using the improved model)
     model = LowLightDeblurNet().to(device)
     
-    # 混合损失函数
+    # Hybrid loss function
     criterion = HybridLoss(
         alpha=args.alpha, 
         beta=args.beta, 
@@ -184,10 +183,10 @@ def train(args):
         device=device
     )
     
-    # 优化器
+    # Optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     
-    # 学习率调度器
+    # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, 
         mode='min', 
@@ -196,100 +195,117 @@ def train(args):
         verbose=True
     )
     
-    # 训练历史记录
+    # Training history
     history = {
         'train_loss': [],
         'val_loss': [],
+        'test_psnr': [],   # 新增：测试集PSNR
+        'test_ssim': [],   # 新增：测试集SSIM
         'lr': [],
         'psnr': [],
         'ssim': []
     }
     
-    # 获取第一个样本用于可视化
+    # Get the first sample for visualization
     first_sample = full_dataset.first_sample
     if first_sample:
         input_path, target_path = first_sample
         input_img = transform(Image.open(input_path).convert('RGB')).unsqueeze(0).to(device)
         target_img = transform(Image.open(target_path).convert('RGB')).unsqueeze(0).to(device)
-        print(f"[Visual] 使用样本进行可视化: input='{input_path}', target='{target_path}'")
+        print(f"[Visual] Using sample for visualization: input='{input_path}', target='{target_path}'")
     
-    # 训练循环
+    # 创建测试集加载器（新增）
+    test_dataset = LowLightDeblurDataset(args.test_dir, transform)
+    test_loader = DataLoader(
+        test_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=2, pin_memory=device.type == 'cuda'
+    )
+    print(f"[Test] Test set size: {len(test_dataset)}")
+    
+    # Training loop
     best_val_loss = float('inf')
     for epoch in range(1, args.epochs + 1):
-        # 训练阶段
+        # Training phase
         model.train()
         train_loss = 0
         train_metrics = {'l1': 0, 'percep': 0, 'ssim': 0}
         
-        pbar = tqdm(train_loader, desc=f"训练 Epoch {epoch}/{args.epochs}")
+        pbar = tqdm(train_loader, desc=f"Training Epoch {epoch}/{args.epochs}")
         for i, (inputs, targets) in enumerate(pbar):
             inputs, targets = inputs.to(device), targets.to(device)
             
-            # 前向传播
+            # Forward pass
             outputs = model(inputs)
             
-            # 计算损失
+            # Compute loss
             loss, metrics = criterion(outputs, targets)
             
-            # 反向传播
+            # Backward pass
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             
-            # 记录损失和指标
+            # Record loss and metrics
             train_loss += loss.item()
             for k in metrics:
                 train_metrics[k] += metrics[k]
             
-            # 更新进度条
+            # Update progress bar
             if (i + 1) % args.log_interval == 0:
                 pbar.set_postfix(loss=loss.item())
         
-        # 计算平均训练损失
+        # Calculate average training loss
         avg_train_loss = train_loss / len(train_loader)
         for k in train_metrics:
             train_metrics[k] /= len(train_loader)
         
-        # 验证阶段
+        # Validation phase
         val_loss, val_metrics, avg_psnr, avg_ssim = validate(model, criterion, val_loader, device)
         
-        # 更新学习率
+        # Update learning rate
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]['lr']
         
-        # 记录历史
+        # Record history
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(val_loss)
         history['lr'].append(current_lr)
         history['psnr'].append(avg_psnr)
         history['ssim'].append(avg_ssim)
         
-        # 打印epoch总结
-        print(f"\n[Epoch {epoch}] 训练完成")
-        print(f"  训练损失: {avg_train_loss:.6f} (L1: {train_metrics['l1']:.6f}, Percep: {train_metrics['percep']:.6f}, SSIM: {train_metrics['ssim']:.6f})")
-        print(f"  验证损失: {val_loss:.6f} (L1: {val_metrics['l1']:.6f}, Percep: {val_metrics['percep']:.6f}, SSIM: {val_metrics['ssim']:.6f})")
+        # 周期性在测试集上评估（新增）
+        if epoch % args.test_interval == 0:
+            test_psnr, test_ssim = evaluate_on_test_set(model, test_loader, device)
+            history['test_psnr'].append(test_psnr)
+            history['test_ssim'].append(test_ssim)
+            print(f"[Test] Test PSNR: {test_psnr:.4f} dB, SSIM: {test_ssim:.4f}")
+        
+        # Print epoch summary
+        print(f"\n[Epoch {epoch}] Training completed")
+        print(f"  Training loss: {avg_train_loss:.6f} (L1: {train_metrics['l1']:.6f}, Percep: {train_metrics['percep']:.6f}, SSIM: {train_metrics['ssim']:.6f})")
+        print(f"  Validation loss: {val_loss:.6f} (L1: {val_metrics['l1']:.6f}, Percep: {val_metrics['percep']:.6f}, SSIM: {val_metrics['ssim']:.6f})")
         print(f"  PSNR: {avg_psnr:.4f} dB, SSIM: {avg_ssim:.4f}")
-        print(f"  学习率: {current_lr:.2e}")
+        print(f"  Learning rate: {current_lr:.2e}")
         
-        # 保存模型检查点
-        checkpoint_path = os.path.join(args.ckpt_dir, f"deblurnet_epoch{epoch}.pth")
+        # Save model checkpoint
+        checkpoint_path = os.path.join(args.ckpt_dir, f"deblurnet_fac_epoch{epoch}.pth")
         torch.save(model.state_dict(), checkpoint_path)
-        print(f"[Checkpoint] 模型已保存至: {checkpoint_path}")
+        print(f"[Checkpoint] Model saved to: {checkpoint_path}")
         
-        # 保存最佳模型
+        # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_checkpoint_path = os.path.join(args.ckpt_dir, "deblurnet_best.pth")
+            best_checkpoint_path = os.path.join(args.ckpt_dir, "deblurnet_fac_best.pth")
             torch.save(model.state_dict(), best_checkpoint_path)
-            print(f"[Best Model] 新的最佳模型已保存至: {best_checkpoint_path}")
+            print(f"[Best Model] New best model saved to: {best_checkpoint_path}")
         
-        # 使用第一个样本生成可视化结果
+        # Generate visualization using the first sample
         if first_sample:
             model.eval()
             with torch.no_grad():
                 output_img = model(input_img).clamp(0, 1)
             
-            # 保存可视化结果
+            # Save visualization
             save_visual_comparison(
                 input_img.cpu(), 
                 output_img.cpu(), 
@@ -299,18 +315,18 @@ def train(args):
                 avg_ssim,
                 args.result_dir
             )
-            print(f"[Visual] 可视化结果已保存至 {args.result_dir}/epoch_{epoch}.png")
+            print(f"[Visual] Visualization saved to {args.result_dir}/epoch_{epoch}.png")
         
-        # 绘制并保存训练历史
+        # Plot and save training history
         plot_training_history(history, os.path.join(args.result_dir, 'training_history.png'))
     
-    # 保存最终模型
-    final_checkpoint_path = os.path.join(args.ckpt_dir, "deblurnet_final.pth")
+    # Save final model
+    final_checkpoint_path = os.path.join(args.ckpt_dir, "deblurnet_fac_final.pth")
     torch.save(model.state_dict(), final_checkpoint_path)
-    print(f"[Final Model] 最终模型已保存至: {final_checkpoint_path}")
+    print(f"[Final Model] Final model saved to: {final_checkpoint_path}")
 
 # ----------------------------
-# 验证函数
+# Validation function
 # ----------------------------
 def validate(model, criterion, val_loader, device):
     model.eval()
@@ -321,27 +337,27 @@ def validate(model, criterion, val_loader, device):
     count = 0
     
     with torch.no_grad():
-        for inputs, targets in tqdm(val_loader, desc="验证中"):
+        for inputs, targets in tqdm(val_loader, desc="Validating"):
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
             
-            # 添加尺寸检查
+            # Check and adjust size if necessary
             if outputs.shape[2:] != targets.shape[2:]:
                 outputs = F.interpolate(outputs, size=targets.shape[2:], mode='bilinear', align_corners=True)
-            # 计算损失
+            # Compute loss
             loss, batch_metrics = criterion(outputs, targets)
             val_loss += loss.item()
             
-            # 累加指标
+            # Accumulate metrics
             for k in batch_metrics:
                 metrics[k] += batch_metrics[k]
             
-            # 计算PSNR和SSIM
+            # Compute PSNR and SSIM
             total_psnr += psnr(outputs, targets, data_range=1.0).item()
             total_ssim += ssim(outputs, targets, data_range=1.0).item()
             count += inputs.size(0)
     
-    # 计算平均值
+    # Calculate averages
     avg_val_loss = val_loss / len(val_loader)
     for k in metrics:
         metrics[k] /= len(val_loader)
@@ -351,29 +367,56 @@ def validate(model, criterion, val_loader, device):
     return avg_val_loss, metrics, avg_psnr, avg_ssim
 
 # ----------------------------
-# 保存可视化比较结果
+# 新增：在测试集上评估函数
+# ----------------------------
+def evaluate_on_test_set(model, test_loader, device):
+    model.eval()
+    total_psnr = 0
+    total_ssim = 0
+    
+    with torch.no_grad():
+        for inputs, targets in tqdm(test_loader, desc="Testing"):
+            inputs, targets = inputs.to(device), targets.to(device)
+            outputs = model(inputs)
+            
+            # Check and adjust size if necessary
+            if outputs.shape[2:] != targets.shape[2:]:
+                outputs = F.interpolate(outputs, size=targets.shape[2:], mode='bilinear', align_corners=True)
+            
+            # Compute PSNR and SSIM
+            total_psnr += psnr(outputs, targets, data_range=1.0).item()
+            total_ssim += ssim(outputs, targets, data_range=1.0).item()
+    
+    # Calculate averages
+    avg_psnr = total_psnr / len(test_loader)
+    avg_ssim = total_ssim / len(test_loader)
+    
+    return avg_psnr, avg_ssim
+
+# ----------------------------
+# Save visual comparison
 # ----------------------------
 def save_visual_comparison(input_img, output_img, target_img, epoch, psnr_val, ssim_val, save_dir):
-    # 转换为PIL图像
+    # Convert to PIL images
     to_pil = transforms.ToPILImage()
     input_pil = to_pil(input_img.squeeze(0))
     output_pil = to_pil(output_img.squeeze(0))
     target_pil = to_pil(target_img.squeeze(0))
     
-    # 创建对比图
+    # Create comparison figure
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     
-    # 输入图像
+    # Input image
     axes[0].imshow(input_pil)
     axes[0].set_title("Low-Light Blurred Input")
     axes[0].axis('off')
     
-    # 输出图像
+    # Output image
     axes[1].imshow(output_pil)
     axes[1].set_title(f"Predicted Output\nPSNR: {psnr_val:.2f} dB, SSIM: {ssim_val:.4f}")
     axes[1].axis('off')
     
-    # 目标图像
+    # Target image
     axes[2].imshow(target_pil)
     axes[2].set_title("Sharp Ground Truth")
     axes[2].axis('off')
@@ -383,7 +426,7 @@ def save_visual_comparison(input_img, output_img, target_img, epoch, psnr_val, s
     plt.close()
 
 # ----------------------------
-# 绘制训练历史
+# Plot training history
 # ----------------------------
 def plot_training_history(history, save_path):
     fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15))
@@ -392,23 +435,39 @@ def plot_training_history(history, save_path):
     epochs = range(1, len(history['train_loss']) + 1)
     ax1.plot(epochs, history['train_loss'], label='Training Loss')
     ax1.plot(epochs, history['val_loss'], label='Validation Loss')
+    
+    # 标记测试点（新增）
+    if 'test_psnr' in history and history['test_psnr']:
+        test_epochs = [e for i, e in enumerate(epochs) if (i+1) % args.test_interval == 0]
+        ax1.scatter(test_epochs, [history['val_loss'][i] for i in range(len(history['val_loss'])) if (i+1) % args.test_interval == 0], 
+                   color='red', s=50, label='Test Evaluation')
+    
     ax1.set_title('Training and Validation Loss')
     ax1.set_xlabel('Epoch')
     ax1.set_ylabel('Loss')
     ax1.legend()
     ax1.grid(True)
 
-    # 绘制指标曲线
-    ax2.plot(epochs, history['psnr'], label='PSNR', color='green')
+    # Plot PSNR
+    ax2.plot(epochs, history['psnr'], label='Validation PSNR', color='blue')
+    if 'test_psnr' in history and history['test_psnr']:
+        test_epochs = [e for i, e in enumerate(epochs) if (i+1) % args.test_interval == 0]
+        ax2.scatter(test_epochs, history['test_psnr'], color='red', s=50, label='Test PSNR')
     ax2.set_title('PSNR (dB)')
     ax2.set_xlabel('Epoch')
     ax2.set_ylabel('dB')
+    ax2.legend()
     ax2.grid(True)
     
-    ax3.plot(epochs, history['ssim'], label='SSIM', color='purple')
+    # Plot SSIM
+    ax3.plot(epochs, history['ssim'], label='Validation SSIM', color='purple')
+    if 'test_ssim' in history and history['test_ssim']:
+        test_epochs = [e for i, e in enumerate(epochs) if (i+1) % args.test_interval == 0]
+        ax3.scatter(test_epochs, history['test_ssim'], color='red', s=50, label='Test SSIM')
     ax3.set_title('SSIM')
     ax3.set_xlabel('Epoch')
     ax3.set_ylabel('SSIM')
+    ax3.legend()
     ax3.grid(True)
     
     plt.tight_layout()
@@ -416,25 +475,27 @@ def plot_training_history(history, save_path):
     plt.close()
 
 # ----------------------------
-# 命令行参数解析入口
+# Command line argument parsing
 # ----------------------------
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="低光饱和去模糊专用模型训练")
-    parser.add_argument('--data_dir', default='dataset/train', help='包含 low_blur_noise 和 high_sharp_scaled 的根目录')
-    parser.add_argument('--ckpt_dir', default='checkpoint', help='模型 checkpoint 保存目录')
-    parser.add_argument('--result_dir', default='result', help='结果和可视化保存目录')
-    parser.add_argument('--img_size', type=int, default=256, help='统一图像大小')
-    parser.add_argument('--batch_size', type=int, default=8, help='训练 batch 大小')
-    parser.add_argument('--epochs', type=int, default=100, help='训练轮数')
-    parser.add_argument('--lr', type=float, default=1e-3, help='学习率')
-    parser.add_argument('--log_interval', type=int, default=10, help='每隔多少 batch 显示一次 loss')
+    parser = argparse.ArgumentParser(description="Training for Low-Light Deblurring Model")
+    parser.add_argument('--data_dir', default='dataset/train', help='Root directory containing low_blur_noise and high_sharp_scaled')
+    parser.add_argument('--test_dir', default='dataset/test', help='Test dataset directory')  # 新增测试集参数
+    parser.add_argument('--ckpt_dir', default='checkpoint', help='Directory to save model checkpoints')
+    parser.add_argument('--result_dir', default='result', help='Directory to save results and visualizations')
+    parser.add_argument('--img_size', type=int, default=256, help='Uniform image size')
+    parser.add_argument('--batch_size', type=int, default=8, help='Training batch size')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs')
+    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--log_interval', type=int, default=10, help='Log interval in batches')
+    parser.add_argument('--test_interval', type=int, default=5, help='Evaluate on test set every N epochs')  # 新增测试间隔
     
-    # 混合损失参数
-    parser.add_argument('--alpha', type=float, default=0.6, help='L1损失权重')
-    parser.add_argument('--beta', type=float, default=0.3, help='感知损失权重')
-    parser.add_argument('--gamma', type=float, default=0.1, help='SSIM损失权重')
+    # Hybrid loss parameters
+    parser.add_argument('--alpha', type=float, default=0.6, help='Weight for L1 loss')
+    parser.add_argument('--beta', type=float, default=0.3, help='Weight for perceptual loss')
+    parser.add_argument('--gamma', type=float, default=0.1, help='Weight for SSIM loss')
     
     args = parser.parse_args()
 
-    print(f"[Args] 参数设置: {args}")
+    print(f"[Args] Arguments: {args}")
     train(args)

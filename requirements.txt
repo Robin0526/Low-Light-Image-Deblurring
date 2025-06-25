@@ -5,4 +5,5 @@ pillow
 matplotlib
 tqdm
 lpips
+piq
 rawpy    

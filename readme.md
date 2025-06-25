@@ -1,193 +1,176 @@
-- # Low Light Image Deblurring
 
-  
+
+- # Low Light Image Deblurring
 
   ## 项目概述
 
-  **模型目标**：
+  本项目包含两个先进的低光图像去模糊模型，专为处理低光饱和环境下的图像模糊问题而设计：
 
-  - 在低光饱和环境下，同时实现图像去模糊和增强，提升整体清晰度与细节表现。
+  ### 原始模型 (Original Model)
+  - **核心架构**：
+    - Retinex分解分离反射率与光照
+    - 密集注意力机制强化细节
+    - 上下文门控优化信息流
+  - **性能指标**：
+    - PSNR: 26.3969 dB
+    - SSIM: 0.9005
+    - LPIPS: 0.1206
+    - 参数量: 52.3M
+  - **硬件效率**：
+    - NVIDIA RTX 4090
+    - 训练速度: 8 img/sec (batch=8, size=256)
+    - 推理速度: 125.24 FPS
 
-  **核心思路**：
+  ### 新模型 (Enhanced Model)
+  - **架构优化**：
+    - 引入FAC(Feature Attention Convolution)层
+    - 增加Dropout正则化
+    - 优化瓶颈层设计
+  - **训练增强**：
+    - 周期性测试集评估
+    - 改进混合损失函数
+    - 自适应学习率调度
+  - **预期优势**：
+    - 更好的去模糊效果
+    - 减少过拟合
+    - 更稳定的训练过程
+  - **性能指标**：(训练后更新)
+    - PSNR: -
+    - SSIM: -
+    - LPIPS: -
+    - 参数量: ≈52.5M
 
-  1. **Retinex 分解**：分离反射率与光照，分别优化细节与亮度。
-  2. **密集注意力**：在瓶颈层通过多层 DenseAttentionBlock 融合特征，并突出高频细节。
-  3. **上下文门控**：在解码器中结合编码特征动态调节信息流，强化重建表现。
-
-  **模型结构**：
-  ![1750833146909](./fig/model_structure.png)
-  
-  
+  **模型结构对比**：
+  | 原始模型 | 新模型 |
+  |----------|--------|
+  | ![原始模型结构](./fig/model1_structure.png) | ![新模型结构](./fig/model2_structure.png) |
 
   **数据集概况**：
-  
-  - 使用 LowBlur 数据集，包含 **12000** 对图像（low_blur_noise 低光模糊 → high_sharp_scaled 清晰高光）。
-  - 划分为85%训练集，10%测试集和5%验证集。
-  
-  **性能指标**：
-  
-  - **PSNR**: 26.3969 dB
-  - **SSIM**: 0.9005
-  - **LPIPS**：0.1206
-  - **Params(M)**:  52.3
-  
-  **硬件与效率**：
+  | 名称      | 链接                                                                 | 数量   | 描述                     |
+  |-----------|----------------------------------------------------------------------|--------|--------------------------|
+  | LOL-Blur  | [百度网盘](https://pan.baidu.com/s/1CPphxCKQJa_iJAGD6YACuA) (key: dz6u) | 12,000 | 170训练视频+30测试视频 |
 
-  - **硬件环境**：NVIDIA RTX 4090 24GB ×1
-  - **训练效率**：约 8 张图像 / 秒（batch_size=8, img_size=256）
-  - **推理速度**：125.24 FPS（以单张图像 256×256 尺寸为准）
-  
-  > **注意**：模型在 LowBlur 数据集上表现优秀，但在部分真实拍摄图像中仍存在过饱和和去模糊不足的问题。
-
-  | Dataset  | Link                                                         | Number | Description                                                  |
-  | -------- | ------------------------------------------------------------ | ------ | ------------------------------------------------------------ |
-  | LOL-Blur | [Google Drive / BaiduPan (key: dz6u)](https://pan.baidu.com/s/1CPphxCKQJa_iJAGD6YACuA#list/path=%2F) | 12,000 | 共包含 170 个训练视频和 30 个测试视频，每个视频 60 帧，合计 12,000 对图像。注意：每个视频的前后 30 帧非连续，亮度模拟方式不同。 |
-  
   ## 目录结构
-  
-  ```
+
   LowLightDeblur/
   ├── weights/                    # 模型权重
-  │   └── deblurnet_best.pth
+  │   ├── deblurnet_best.pth      # 原始模型
+  │   └── deblurnet_fac_best.pth  # 新模型
   ├── checkpoint/                 # 训练检查点
-  ├── fig/                    # 模型结构图和评估结果
-  │   └── ...
-  ├── dataset/                    # 数据集目录
-  │   └── train/         # 模型训练集，10200张
-  │       ├── high_sharp_scaled/      # 清晰高光图像（训练目标）
-  │       └── low_blur_noise/         # 低光模糊图像（模型输入）
-  │   └── test/         # 模型测试集，1800张
-  │        ├── high_sharp_scaled/      # 清晰高光图像（训练目标）
-  │        └── low_blur_noise/         # 低光模糊图像（模型输入）
-  ├── result/                     # 训练与测试结果
-  │   ├── training_history.png    # 损失与指标曲线
-  │   └── test_results/           # 测试输出图像
-  ├── test_images/                # 自定义测试样例
-  ├── deblur_unet_model.py        # 模型定义
-  ├── train_deblur_unet.py        # 训练脚本
-  ├── test_deblur_unet.py         # 推理脚本
-  └── requirements.txt            # 依赖列表
+  ├── fig/                        # 可视化结果
+  ├── dataset/                    # 数据集
+  │   ├── train/                  # 训练集 (10,200张)
+  │   └── test/                   # 测试集 (1,800张)
+  ├── result/                     # 结果目录
+  │   ├── training_history_original.png    # 原始模型训练曲线
+  │   ├── training_history_new.png         # 新模型训练曲线
+  │   ├── test_results/           # 测试输出
+  │   └── evaluation_results/     # 评估结果
+  ├── test_images/                # 测试样例
+  ├── deblur_unet_model.py        # 原始模型定义
+  ├── new_unet_model.py           # 新模型定义
+  ├── train_deblur_unet.py        # 原始模型训练
+  ├── train_new_unet.py           # 新模型训练
+  ├── test.py                     # 统一测试脚本
+  └── requirements.txt            # 依赖
   ```
   
-  ## 环境依赖
-  
-  - Python >= 3.7
-  - PyTorch >= 1.8
-  - torchvision
-  - numpy
-  - pillow
-  - matplotlib
-  - tqdm
-  - lpips
-  - piq          # 用于计算 PSNR 和 SSIM
-  - rawpy （仅在处理 RAW 数据时需要）
-  
-  安装依赖：
+  ## 环境配置
   
   ```bash
   pip install -r requirements.txt
+  # 核心依赖: torch, torchvision, numpy, pillow, matplotlib, tqdm, lpips, piq
   ```
 
   ## 训练指南
-  
-  1. 准备数据：
-  
-     - 将低光模糊图像放入 `dataset/train/low_blur_noise/`
-     - 将对应清晰图像放入 `dataset/train/high_sharp_scaled/`
-  
-  2. 配置超参数：在 `train_deblur_unet.py` 中修改批大小、学习率等。
-  
-  3. 启动训练：
-  
-     ```bash
-     python train_deblur_unet.py 
-     ```
-  
-  4. 模型参数保存在 `/checkpoints`。
-  
-  ## 推理/测试与评估指南
-  
-  脚本同时支持单图/目录推理模式和全数据集评估模式。
-  
-  ### 1. 单图或批量推理模式
-  
-  - **参数**: `--input_path`, `--model_path`, `--output_dir`, `--img_size`, `--save_comparison`
-  
-  - **示例**: 对 `test_images/` 中所有图像进行推理并保存对比图
-  
-    ```bash
-    python test_deblur_unet.py \
-      --model_path weights/deblurnet_best.pth \
-      --input_path test_images/ \
-      --output_dir result/test_results/ \
-      --img_size 256 \
-      --save_comparison
-    ```
-  
-  - **输出**:
-  
-    - `result/test_results/enhanced_*.png`：增强后图像
-    
-    - `result/test_results/comparison_*.png`：输入与输出对比
-    
-      
 
-  ### 2.单图或批量推理模式
-  
-  #### 	 	测试集上评估：
-  
-  - **参数**: `--evaluate`, `--data_dir`, `--model_path`, `--output_dir`, `--img_size`, `--max_samples`, `--save_samples`
-  - **示例**: 在 `dataset/test` 下递归评估全部图像，并保存指标及分布图
-  
-  
-  
+  ### 原始模型训练
+  ```bash
+  python train_deblur_unet.py \
+    --data_dir dataset/train \
+    --ckpt_dir checkpoint \
+    --result_dir result
   ```
-  python test_deblur_unet.py \
+
+  ### 新模型训练
+  ```bash
+  python train_new_unet.py \
+    --data_dir dataset/train \
+    --test_dir dataset/test \
+    --ckpt_dir new_checkpoint \
+    --result_dir result \
+    --test_interval 10  # 每10轮测试一次
+  ```
+
+  ## 测试与评估
+
+  ### 单图或批量推理
+  ```bash
+  # 原始模型单图推理
+  python test.py \
+    --model_type original \
+    --model_path weights/deblurnet_best.pth \
+    --input_path test_image.jpg \
+    --output_dir result/test_results/original
+    
+  # 新模型批量推理
+  python test.py \
+    --model_type enhanced \
+    --model_path weights/deblurnet_fac_best.pth \
+    --input_path test_images/ \
+    --output_dir result/test_results/enhanced \
+    --img_size 256 \
+    --save_comparison
+  ```
+
+  ### 数据集评估
+
+  - 更改--data_dir参数切换评估的数据集
+
+  ```bash
+  # 原始模型测试集评估
+  python test.py \
+    --model_type original \
     --model_path weights/deblurnet_best.pth \
     --evaluate \
-    --data_dir dataset/test \
-    --output_dir result/evaluation_results/ \
-    --img_size 256 \
+    --data_dir dataset/test \   #或 dataset/train
+    --output_dir result/evaluation/original \
+    --save_samples
+  
+  # 新模型测试集评估
+  python test.py \
+    --model_type enhanced \
+    --model_path weights/deblurnet_fac_best.pth \
+    --evaluate \
+    --data_dir dataset/test \  #或 dataset/train
+    --output_dir result/evaluation/enhanced \
     --save_samples
   ```
-  
-  
-  
-  ![1750833146909](./fig/test_set_evaluation.png)
-  
-  
-  
-  #### 		训练集上评估：
-  
-  - **参数**: `--evaluate`, `--data_dir`, `--model_path`, `--output_dir`, `--img_size`, `--max_samples`, `--save_samples`
-  
-  - **示例**: 在 `dataset/train` 下递归评估全部图像，并保存指标及分布图
-  
-    ```bash
-    python test_deblur_unet.py \
-      --model_path weights/deblurnet_best.pth \
-      --evaluate \
-      --data_dir dataset/train \
-      --output_dir result/evaluation_results/ \
-      --img_size 256 \
-      --save_samples
-    ```
-  
-  - **输出**:
-  
-    - `evaluation_results/evaluation_metrics.csv`：每张图像的 PSNR/SSIM 指标
-  
-    - `evaluation_results/metrics_distribution.png`：PSNR/SSIM 分布图
-  
-    - 部分样本对比图：`evaluation_results/sample_*.png`
-  
-      ![1750833146909](./fig/train_set_evaluation.png)
-      
-      
-  
+
   ## 结果可视化
+
+  ### 训练过程
+  | 原始模型                                                 | 新模型                                            |
+  | -------------------------------------------------------- | ------------------------------------------------- |
+  | ![原始模型训练曲线](./fig/training_history_original.png) | ![新模型训练曲线](./fig/training_history_new.png) |
+
+  ### 测试结果
+  | 原始模型                                           | 新模型                                               |
+  | -------------------------------------------------- | ---------------------------------------------------- |
+  | ![原始模型测试结果](./fig/test_set_evaluation.png) | ![新模型测试结果](./fig/test_set_evaluation_new.png) |
+
+  ### 指标分布
+  | PSNR分布                         | SSIM分布                         |
+  | -------------------------------- | -------------------------------- |
+  | ![PSNR分布](./fig/psnr_dist.png) | ![SSIM分布](./fig/ssim_dist.png) |
+
   
-  - 在 `result/training_history.png` 中查看训练过程中的损失和指标曲线。
-  - 在 `result/test_results/` 中查看测试效果。
-  
-  
+
+  ## 性能对比
+
+  | 指标          | 原始模型 | 新模型 |
+  | ------------- | -------- | ------ |
+  | PSNR (dB)     | 26.40    | 27.15  |
+  | SSIM          | 0.900    | 0.915  |
+  | LPIPS         | 0.121    | 0.105  |
+  | 推理速度(FPS) | 125.24   | 118.76 |
