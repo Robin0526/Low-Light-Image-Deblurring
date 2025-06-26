@@ -8,13 +8,9 @@
 
   ### 原始模型 (Original Model)
   - **核心架构**：
-    - Retinex分解分离反射率与光照
+    - **Retinex**分解分离反射率与光照
     - 密集注意力机制强化细节
     - 上下文门控优化信息流
-  - **性能指标**：
-    - PSNR: 26.3969 dB
-    - SSIM: 0.9005
-    - 参数量: ≈52.3M
   - **硬件效率**：
     - NVIDIA RTX 4090
     - 训练速度: 8 img/sec (batch=8, size=256)
@@ -22,21 +18,17 @@
   
   ### 新模型 (Enhanced Model)
   - **架构优化**：
-    - 引入FAC(Feature Attention Convolution)层
+    - 引入**FAC(Feature Attention Convolution)**层
     - 增加Dropout正则化
     - 优化瓶颈层设计
   - **训练增强**：
     - 周期性测试集评估
     - 改进混合损失函数
     - 自适应学习率调度
-  - **预期优势**：
+  - **比较优势**：
     - 更好的去模糊效果
     - 减少过拟合
     - 更稳定的训练过程
-  - **性能指标**：(训练后更新)
-    - PSNR: 26.8281dB
-    - SSIM: 0.9140
-    - 参数量: ≈52.5M
   - **硬件效率**：
     - NVIDIA RTX 4090
     - 训练速度: 8 img/sec (batch=8, size=256)
@@ -51,7 +43,20 @@
   | 名称      | 链接                                                                 | 数量   | 描述                     |
   |-----------|----------------------------------------------------------------------|--------|--------------------------|
   | LOL-Blur  | [百度网盘](https://pan.baidu.com/s/1CPphxCKQJa_iJAGD6YACuA) (key: dz6u) | 12,000 | 170训练视频+30测试视频 |
-
+  
+  
+  
+    ## 性能对比（在LOLBlur的测试集上）
+  
+  | 指标        | 原始模型 | 新模型 | LEDNet(括号内为论文报告值) |
+  | ----------- | -------- | ------ | :------------------- |
+  | PSNR (dB)   | 23.65    | 23.88  | 26.06(25.74)   |
+  | SSIM        | 0.744   | 0.750  | 0.852(0.850)  |
+  | LPIPS (VGG) | 0.360   | 0.346 | 0.217(0.224)  |
+  | 参数量 (M)  | 52.3     | 52.5   | 7.4             |
+  
+  
+  
   ## 目录结构
   
   ```
@@ -78,7 +83,10 @@
   ├── new_unet_model.py           # 新模型定义
   ├── train_deblur_unet.py        # 原始模型训练
   ├── train_new_unet.py           # 新模型训练
-  ├── test.py                     # 统一测试脚本
+  ├── test.py                     # 推理测试脚本
+  ├── test.py                     # 推理测试脚本
+  ├── calculate_iqa_pair.py		# LEDNet项目的模型评估脚本
+  ├── generate_inference_dataset.py		 # 对数据集统一推理并保存结果图像，保持原始目录结构
   └── requirements.txt            # 依赖
   ```
   
@@ -128,6 +136,7 @@
   
   - 选择原始模型： --model_type = original，     --model_path = deblurnet_best.pth
   - 选择新模型：     --model_type = enhanced，--model_path = deblurnet_fac_best.pth
+  - 是否保存对比图：  加入--save_comparison 保存
   
   ```bash
   # 单图推理，使用原始模型
@@ -137,7 +146,7 @@
     --input_path test_images/0010.png \
     --output_dir result/test_results/original \
     --img_size 256 \
-    --save_comparison
+    --save_comparison 
     
   # 批量推理，使用新模型
   python test.py \
@@ -149,43 +158,35 @@
     --save_comparison
   ```
   
-  ### 数据集评估
   
-  - 选择原始模型： --model_type = original，    --model_path = deblurnet_best.pth
-  - 选择新模型：     --model_type = enhanced，--model_path = deblurnet_fac_best.pth
   
-  ```bash
-  # 测试集评估，原始模型
-  python test.py   --model_type original      --model_path weights/deblurnet_best.pth   --evaluate  --data_dir dataset/test  --output_dir result/evaluation/original --save_samples
+    ### 数据集评估
   
-  # 测试集评估，新模型
-  python test.py   --model_type enhanced   --model_path weights/deblurnet_fac_best.pth  --evaluate  --data_dir dataset/test  --output_dir result/evaluation/enhanced --save_samples
+  ​		为确保评估的规范性，我们使用 **LEDNet** 项目提供的 **`calculate_iqa_pair.py`** 脚本进行图像质量测评。您可以按照以下步骤对模型输出结果进行标准化评估。
+  
   ```
+  # 第一步：生成测试集结果，保持数据集原始目录结构
+  python generate_inference_dataset.py  --model_type enhanced  --model_path weights/deblurnet_fac_best.pth  --input_path dataset/test/low_blur_noise  --output_dir result/test_set_result/enhanced   --img_size 256
+  
+  # 第二步：使用 calculate_iqa_pair.py的评估脚本计算图像质量指标（PSNR、SSIM、LPIPS）
+  python calculate_iqa_pair.py   --result_path result/test_set_result/enhanced  --gt_path dataset/test/high_sharp_scaled  --metrics psnr ssim lpips
+  
+  ```
+  
+  
   
   ## 结果可视化
   
   ### 训练过程
-  | 原始模型                                                    | 新模型                                               |
-  | ----------------------------------------------------------- | ---------------------------------------------------- |
-  | ![原始模型训练曲线](./result/training_history_original.png) | ![新模型训练曲线](./result/training_history_new.png) |
+  | 原始模型                                                 | 新模型                                            |
+  | -------------------------------------------------------- | ------------------------------------------------- |
+  | ![原始模型训练曲线](./fig/training_history_original.png) | ![新模型训练曲线](./fig/training_history_new.png) |
   
-  ### 测试结果
-  | 原始模型                                                    | 新模型                                               |
-  | ----------------------------------------------------------- | ---------------------------------------------------- |
-  | ![原始模型测试结果](./fig/original_test_set_evaluation.png) | ![新模型测试结果](./fig/new_test_set_evaluation.png) |
+  ### 
   
   ### 指标分布（PSNR和SSIM直方图）
-  | 原始模型                                              | 新模型                                             |
-  | ----------------------------------------------------- | -------------------------------------------------- |
-  | ![PSNR分布](./result/metrics_distribution_origin.png) | ![PSNR分布](./result/metrics_distribution_new.png) |
+  | 原始模型                                           | 新模型                                          |
+  | -------------------------------------------------- | ----------------------------------------------- |
+  | ![PSNR分布](./fig/metrics_distribution_origin.png) | ![PSNR分布](./fig/metrics_distribution_new.png) |
   
   
-  
-  ## 性能对比
-  
-  | 指标          | 原始模型 | 新模型  |
-  | ------------- | -------- | ------- |
-  | PSNR (dB)     | 26.3969  | 26.8281 |
-  | SSIM          | 0.9009   | 0.9140  |
-  | LPIPS         | 0.1206   | 0.0954  |
-  | 推理速度(FPS) | 125.24   | 84.40   |
