@@ -18,8 +18,8 @@
   
   ### 新模型 (Enhanced Model)
   - **架构优化**：
-    - 引入**FAC(Feature Attention Convolution)**层
-    - 增加Dropout正则化
+    - 引入**FAC**(Feature Attention Convolution)层
+    - 增加**Dropout**正则化
     - 优化瓶颈层设计
   - **训练增强**：
     - 周期性测试集评估
@@ -97,13 +97,21 @@
   python>=3.7
   
   torch>=1.8.0
+  
   torchvision
+  
   numpy
+  
   pillow
+  
   matplotlib
+  
   tqdm
+  
   lpips
+  
   piq
+  
   rawpy    
   
   ```bash
